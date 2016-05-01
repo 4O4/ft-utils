@@ -1,0 +1,181 @@
+#!/usr/bin/env bash
+# Author: PK
+
+# Strict mode
+set -euo pipefail
+IFS=$'\n\t'
+
+readonly SCRIPT_NAME="${0##*/}"
+readonly VERSION=1.0.0
+
+version() {
+	cat <<-EOF
+	${SCRIPT_NAME} v${VERSION} by PK
+	EOF
+}
+
+usage() {
+	version
+
+	cat <<-EOF
+
+	Usage: ${SCRIPT_NAME} [OPTION]...
+	
+	Options:
+	  -p, --port <number>   port to listen on (default: 2723)
+	  -l, --lexer <name>    pygments lexer for syntax highlighting (default: xml)
+	  -n, --no-highlight    disable syntax highlighting
+	  -v, --version         print version info
+	  -h, --help            show this help
+	
+	Examples:
+	  ${SCRIPT_NAME}
+	  ${SCRIPT_NAME} --port 1234
+	  ${SCRIPT_NAME} --language json --port 1234
+	EOF
+}
+
+check_dependencies() {
+	local dependencies_met=true
+	
+	check_dependency nc
+	check_dependency awk
+	check_dependency screen
+	check_dependency tail
+	check_dependency pygmentize "syntax highlighting" optional
+
+	if [ "${dependencies_met}" = false ]; then
+		exit 1
+	fi;
+}
+
+check_dependency() {
+	local cmd=$1
+	local info=
+	local flag=
+
+	if [[ ! -z "${2+x}" ]]; then
+		info="$2"
+	fi;
+
+	if [[ ! -z "${3+x}" ]]; then
+		flag="$3"
+	fi;
+
+	hash ${cmd} 2>/dev/null || { 
+		if [[ -z "${info}" ]]; then
+			echo >&2 "${SCRIPT_NAME} requires '${cmd}' to work properly but it was not found."; 
+		else
+			echo >&2 "Warning: '${cmd}' was not found, $2 will not be available"; 
+			unmet_dependencies["${cmd}"]=true
+		fi;
+
+		if ! [ "$3" = "optional" ]; then
+			dependencies_met=false;
+		fi;
+	}
+}
+
+handle_cmdline() {
+	while [[ "$#" -gt 0 ]]; do
+		key="$1"
+
+		case "$key" in
+		-p|--port)
+			local num_pattern='^[0-9]+$'
+
+			if [[ -z "${port}" ]] && [[ ! -z "${2+x}" ]] && [[ "$2" =~ $num_pattern ]]; then
+				port="$2"
+				shift
+			else
+				usage
+				exit 1
+			fi;
+		;;
+		-l|--language)
+			if [[ -z "${pygmentize_syntax}" ]] && [[ ! -z "${2+x}" ]]; then
+				pygmentize_syntax="$2"
+				shift
+			else
+				usage
+				exit 1
+			fi;
+		;;
+		-n|--no-highlight)
+			no_highlight=true
+		;;
+		-v|--version)
+			version
+			exit 1
+		;;
+		-h|--help)
+			usage
+			exit 1
+		;;
+		esac
+		shift
+	done
+}
+
+default_setup() {
+	if [[ -z "${port}" ]]; then
+		port="2723"
+	fi;
+
+	if [[ -z "${pygmentize_syntax}" ]]; then
+		pygmentize_syntax="xml"
+	fi;
+}
+
+check_port() {
+	if nc -z 127.0.0.1 "${port}" > /dev/null 2>&1; then
+		echo "Port ${port} is already in use"
+		exit 1
+	fi;
+}
+
+prepare_logfile() {
+	readonly LOGFILE="/var/log/${SCRIPT_NAME}/${SCRIPT_NAME}-$(date +%Y-%m-%d).log"
+
+	mkdir -p "/var/log/${SCRIPT_NAME}"
+	touch "${LOGFILE}"
+}
+
+stop() {
+	screen -S ${sockname} -X quit
+}
+
+main() {
+	declare -A unmet_dependencies
+	local port=
+	local sockname="${SCRIPT_NAME}-$(date +%s)"
+	local pygmentize_syntax=
+	local no_highlight=false
+
+	check_dependencies
+
+	handle_cmdline $@
+	default_setup
+	check_port
+	prepare_logfile
+
+	trap stop exit
+
+	# Appending current time before any incoming XML
+	local awk_script='/<?xml/ {	print strftime("\\n----------\\n%H:%M:%S\\n----------\\n") \$0; fflush(); } \$0 !~ /<?xml/ { print \$0; fflush(); }'
+	
+	# Start daemon
+	screen -dmS "${sockname}" /usr/bin/env bash
+	screen -x "${sockname}" -p 0 -X stuff "$(which nc) -kld ${port} | awk '${awk_script}' >> ${LOGFILE}\n"
+
+	# Display the log continuously
+	if [[ ! -z "${unmet_dependencies[pygmentize]+x}" ]] && [ "${unmet_dependencies[pygmentize]}" = true ]; then
+		tail -f "${LOGFILE}"
+	elif [ "${no_highlight}" = true ]; then
+		tail -f "${LOGFILE}"
+	else
+		tail -f "${LOGFILE}" | pygmentize -s -l "${pygmentize_syntax}"
+	fi;
+}
+
+main $@
