@@ -70,7 +70,7 @@ check_dependency() {
 			unmet_dependencies["${cmd}"]=true
 		fi;
 
-		if ! [ "$3" = "optional" ]; then
+		if ! [ "${flag}" = "optional" ]; then
 			dependencies_met=false;
 		fi;
 	}
