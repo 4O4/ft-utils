@@ -1,0 +1,213 @@
+#!/usr/bin/env bash
+# Author: PK
+
+# Strict mode
+set -euo pipefail
+IFS=$'\n\t'
+
+readonly SCRIPT_NAME="${0##*/}"
+readonly VERSION=1.0.0
+
+version() {
+	cat <<-EOF
+	${SCRIPT_NAME} v${VERSION} by PK
+	EOF
+}
+
+usage() {
+	version
+
+	cat <<-EOF
+
+	Usage: ${SCRIPT_NAME} [USER@]<HOST> [OPTION]...
+	  or   ${SCRIPT_NAME} [OPTION]... [USER@]<HOST>
+	
+	Options:
+	  -f, --export-script <filename> main export script which will be ran on remote (default export.sh)
+	  -i, --include <pattern>        additional files to be uploaded to remote (rsync pattern)
+	                                 (default: **/export.*)
+	                                 note: these files will be also excluded when syncing from remote
+	  -e, --exclude <pattern>        files to exclude when syncing from remote (rsync pattern)
+	                                 (default **/*.log)
+	  -v, --version                  print version info
+	  -h, --help                     show this help
+	
+	Examples:
+	  ${SCRIPT_NAME} examplehost
+	  ${SCRIPT_NAME} dev@examplehost.com
+	  ${SCRIPT_NAME} --export-script export.py examplehost
+	  ${SCRIPT_NAME} examplehost -e **/*.log -e **/*.out -i **/export.* -i **/export-helper.*
+	EOF
+}
+
+check_dependencies() {
+	local dependencies_met=true
+	
+	check_dependency ssh
+	check_dependency rsync
+
+	if [ "${dependencies_met}" = false ]; then
+		exit 1
+	fi;
+}
+
+check_dependency() {
+	local cmd=$1
+	hash ${cmd} 2>/dev/null || { echo >&2 "${SCRIPT_NAME} requires '${cmd}' to work properly but it was not found."; dependencies_met=false;}
+}
+
+handle_cmdline() {
+	if [[ "$#" -eq 0 ]]; then
+		usage
+		exit 1
+	fi;
+
+	while [[ "$#" -gt 0 ]]; do
+		key="$1"
+
+		case "$key" in
+		-f|--export-script)
+			if [[ -z "${main_export_script}" ]] && [[ ! -z "${2+x}" ]]; then
+				main_export_script="$2"
+				shift
+			else
+				usage
+				exit 1
+			fi;
+		;;
+		-i|--include)
+			if [[ ! -z "${2+x}" ]]; then
+				i=${#additional_files[@]}
+				additional_files[$i]="$2"
+				shift
+			else
+				usage
+				exit 1
+			fi;
+		;;
+		-e|--exclude)
+			if [[ ! -z "${2+x}" ]]; then
+				i=${#exclude_patterns[@]}
+				exclude_patterns[$i]="$2"
+				shift
+			else
+				usage
+				exit 1
+			fi;
+		;;
+		-v|--version)
+			version
+			exit 1
+		;;
+		-h|--help)
+			usage
+			exit 1
+		;;
+		*)
+			if [[ -z "${connection}" ]]; then
+				connection="$key"
+			else
+				usage
+				exit 1
+			fi;
+		;;
+		esac
+		shift
+	done
+}
+
+default_setup() {
+	if [[ -z "${main_export_script}" ]]; then
+		main_export_script="export.sh"
+	fi;
+
+	if [[ ${#additional_files[@]} -eq 0 ]]; then
+		additional_files=("**/export.*")
+	fi;
+
+	if [[ ${#exclude_patterns[@]} -eq 0 ]]; then
+		exclude_patterns=("**/*.log")
+	fi;
+}
+
+check_setup() {
+	if [[ -z "${connection}" ]]; then
+		echo "Host not specified"
+		exit 1
+	fi;
+
+	if [ ! -f "${main_export_script}" ]; then
+		echo "Main export script not found ($(pwd)/${main_export_script})"
+		exit 1
+	fi
+}
+
+check_connection() {
+	if ssh -q ${connection} exit; [ $? -eq 255 ]
+	then 
+	  echo "SSH connection failed"
+	  exit 1
+	fi
+}
+
+format_additional_files() {
+	local patterns="${additional_files}"
+	for i in ${!patterns[*]};
+	do
+		local pattern="${patterns[$i]}"
+		patterns[$i]="$1=$pattern"
+	done
+	
+	echo $patterns
+}
+
+format_exclude_patterns() {
+	local patterns="${exclude_patterns}"
+	for i in ${!patterns[*]};
+	do
+		local pattern="${patterns[$i]}"
+		patterns[$i]="$1=$pattern"
+	done
+	
+	echo $patterns
+}
+
+cleanup() {
+	# Cleanup temporary directory
+	ssh -t "${connection}" "rm -rf ${tmp_dir}"
+}
+
+main() {
+	local main_export_script=
+	local additional_files=()
+	local exclude_patterns=()
+	local connection=
+	local tmp_dir="/tmp/${USER}-REMOTE-EXPORT-$(date +'%F-%H-%M-%S')"
+
+	handle_cmdline $@
+	default_setup
+	check_setup
+	check_connection
+
+	# Transfer directory structure, main export script and additional files
+	rsync -av --include="${main_export_script}" $(format_additional_files --include) --include='*/' --exclude='*' ./ "${connection}:${tmp_dir}/"
+
+	trap cleanup EXIT
+
+	# Connect to host and:
+	# 1. Create temporary directory
+	# 2. Open it
+	# 3. Convert main export script to unix format
+	# 4. Make main export script executable
+	# 5. Execute main export script
+	#
+	# None of the above can fail
+	ssh -t "${connection}" "mkdir -p ${tmp_dir} && cd ${tmp_dir} && dos2unix ${main_export_script} && chmod +x ${main_export_script} && bash -l -c ${main_export_script}"
+
+	# Transfer new files back
+	rsync -chrvzP --stats --remove-source-files --prune-empty-dirs --exclude="${main_export_script}" $(format_additional_files --exclude) $(format_exclude_patterns --exclude) "${connection}:${tmp_dir}/" ./
+
+}
+
+check_dependencies
+main $@
