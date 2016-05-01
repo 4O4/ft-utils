@@ -141,25 +141,26 @@ prepare_logfile() {
 	touch "${LOGFILE}"
 }
 
-stop() {
+graceful_stop() {
 	screen -S ${sockname} -X quit
 }
 
 main() {
 	declare -A unmet_dependencies
 	local port=
-	local sockname="${SCRIPT_NAME}-$(date +%s)"
+	local sockname=
 	local pygmentize_syntax=
 	local no_highlight=false
+	sockname="${SCRIPT_NAME}-$(date +%s)" #SC2155
 
 	check_dependencies
 
-	handle_cmdline $@
+	handle_cmdline "$@"
 	default_setup
 	check_port
 	prepare_logfile
 
-	trap stop exit
+	trap graceful_stop exit
 
 	# Appending current time before any incoming XML
 	local awk_script='/<?xml/ {	print strftime("\\n----------\\n%H:%M:%S\\n----------\\n") \$0; fflush(); } \$0 !~ /<?xml/ { print \$0; fflush(); }'
@@ -178,4 +179,4 @@ main() {
 	fi;
 }
 
-main $@
+main "$@"
