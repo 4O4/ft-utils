@@ -173,6 +173,9 @@ format_exclude_patterns() {
 }
 
 cleanup() {
+	local connection="$1"
+	local tmp_dir="$2"
+	
 	# Cleanup temporary directory
 	ssh -t "${connection}" "rm -rf ${tmp_dir}"
 }
@@ -188,11 +191,11 @@ main() {
 	default_setup
 	check_setup
 	check_connection
-
+	
 	# Transfer directory structure, main export script and additional files
 	rsync -av --include="${main_export_script}" $(format_additional_files --include) --include='*/' --exclude='*' ./ "${connection}:${tmp_dir}/"
 
-	trap cleanup EXIT
+	trap "{ cleanup \"${connection}\" \"${tmp_dir}\" ; }" EXIT
 
 	# Connect to host and:
 	# 1. Create temporary directory
