@@ -182,7 +182,7 @@ main() {
 	local additional_files=()
 	local exclude_patterns=()
 	local connection=
-	local tmp_dir="/tmp/${USER}-REMOTE-EXPORT-$(date +'%F-%H-%M-%S')"
+	local tmp_dir="/tmp/remote-export-${USER}-$(date +'%F-%H-%M-%S')"
 
 	handle_cmdline $@
 	default_setup
