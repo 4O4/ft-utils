@@ -142,7 +142,9 @@ prepare_logfile() {
 }
 
 graceful_stop() {
-	screen -S ${sockname} -X quit
+	local sockname="$1"
+	
+	screen -S "${sockname}" -X quit
 }
 
 main() {
@@ -160,7 +162,7 @@ main() {
 	check_port
 	prepare_logfile
 
-	trap graceful_stop exit
+	trap "{ graceful_stop \"${sockname}\" ; }" exit
 
 	# Appending current time before any incoming XML
 	local awk_script='/<?xml/ {	print strftime("\\n----------\\n%H:%M:%S\\n----------\\n") \$0; fflush(); } \$0 !~ /<?xml/ { print \$0; fflush(); }'
