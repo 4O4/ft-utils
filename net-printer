@@ -31,7 +31,7 @@ usage() {
 	Examples:
 	  ${SCRIPT_NAME}
 	  ${SCRIPT_NAME} --port 1234
-	  ${SCRIPT_NAME} --language json --port 1234
+	  ${SCRIPT_NAME} --lexer json --port 1234
 	EOF
 }
 
