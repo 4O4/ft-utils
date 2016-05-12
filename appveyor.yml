@@ -22,9 +22,7 @@ deploy:
 - provider: GitHub
   auth_token:
     secure: m+JqBcNCTGay16Ez9P/8TkKSdq12lWkC4N8linJ/4YYR4P+o0W9cLlk/hAVwLUt2
-  artifact: Windows binaries
-  draft: true
-  prerelease: true
+  artifact: Windows binarise
   force_update: true
   on:
     branch: ebs
