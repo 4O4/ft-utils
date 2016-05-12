@@ -17,12 +17,12 @@ build_script:
     aut2exe /in java-alerts-bot.au3 /pack /out java-alerts-bot-x64.exe /fileversion %APPVEYOR_BUILD_VERSION% /productversion  %APPVEYOR_BUILD_VERSION%
 artifacts:
 - path: '*.exe'
-  name: Windows binaries
+  name: windows-binaries
 deploy:
 - provider: GitHub
   auth_token:
     secure: m+JqBcNCTGay16Ez9P/8TkKSdq12lWkC4N8linJ/4YYR4P+o0W9cLlk/hAVwLUt2
-  artifact: Windows binaries
+  artifact: windows-binaries
   force_update: true
   on:
     branch: ebs
