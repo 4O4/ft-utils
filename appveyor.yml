@@ -1,0 +1,30 @@
+version: 1.0.{build}
+branches:
+  only:
+  - ebs
+skip_tags: true
+image: Visual Studio 2015
+install:
+- cmd: cinst autoit.commandline -y -r
+build_script:
+- cmd: >-
+    aut2exe /in doublescreen-ebs.au3 /pack /out doublescreen-ebs.exe /fileversion %APPVEYOR_BUILD_VERSION% /productversion  %APPVEYOR_BUILD_VERSION%
+
+    aut2exe /in java-alerts-bot.au3 /pack /out java-alerts-bot.exe /fileversion %APPVEYOR_BUILD_VERSION% /productversion  %APPVEYOR_BUILD_VERSION%
+
+    aut2exe /in doublescreen-ebs.au3 /pack /out doublescreen-ebs-x64.exe /fileversion %APPVEYOR_BUILD_VERSION% /productversion  %APPVEYOR_BUILD_VERSION%
+
+    aut2exe /in java-alerts-bot.au3 /pack /out java-alerts-bot-x64.exe /fileversion %APPVEYOR_BUILD_VERSION% /productversion  %APPVEYOR_BUILD_VERSION%
+artifacts:
+- path: '*.exe'
+  name: Windows binaries
+deploy:
+- provider: GitHub
+  auth_token:
+    secure: +CMLwvfU2MH7CD5Fn8tgO6EnACiIoGckOQTugeMcRnCNHiKTecg5cnMJl1qawiC4
+  artifact: Windows binaries
+  draft: true
+  prerelease: true
+  force_update: true
+  on:
+    branch: ebs
